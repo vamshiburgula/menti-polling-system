@@ -1,0 +1,1 @@
+exports.verifyTeacher = (req) => { const header = req.headers['x-teacher-secret'] || req.headers['teacher-secret']; if (!header) return false; return header === process.env.TEACHER_SECRET; };

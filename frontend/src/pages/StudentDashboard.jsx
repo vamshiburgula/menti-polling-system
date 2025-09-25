@@ -1,0 +1,157 @@
+// src/pages/StudentDashboard.jsx
+import React, { useState, useEffect } from "react";
+import { useSelector, useDispatch } from "react-redux";
+import { motion } from "framer-motion";
+import { Clock } from "lucide-react";
+import useSocket from "../hooks/useSocket";
+import { decrementTime, setHasVoted, clearPoll } from "../store/slices/pollSlice";
+
+const StudentDashboard = () => {
+  const dispatch = useDispatch();
+  const { user } = useSelector((state) => state.auth);
+  const { currentPoll, timeRemaining, hasVoted } = useSelector(
+    (state) => state.poll
+  );
+
+  const [selectedAnswer, setSelectedAnswer] = useState("");
+  const [kickedOut, setKickedOut] = useState(false);
+  const { socket, connected } = useSocket() || {};
+
+  // countdown
+  useEffect(() => {
+    if (currentPoll && timeRemaining > 0) {
+      const interval = setInterval(() => dispatch(decrementTime()), 1000);
+      return () => clearInterval(interval);
+    }
+  }, [currentPoll, timeRemaining, dispatch]);
+
+  // kicked out listener
+  useEffect(() => {
+    if (!socket) return;
+    const onRemoved = ({ name }) => {
+      if (name === user) {
+        setKickedOut(true);
+        dispatch(clearPoll());
+      }
+    };
+    socket.on("student_removed", onRemoved);
+    return () => socket.off("student_removed", onRemoved);
+  }, [socket, user, dispatch]);
+
+  const handleSubmitAnswer = () => {
+    if (!selectedAnswer) return;
+    if (!socket || !connected || !currentPoll) {
+      alert("Connection or poll missing. Refresh!");
+      return;
+    }
+    socket.emit("submit_answer", {
+      pollId: currentPoll._id,
+      optionId: selectedAnswer,
+      studentName: user,
+    });
+    setSelectedAnswer("");
+    dispatch(setHasVoted(true));
+  };
+
+  const formatTime = (seconds) => {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m}:${s.toString().padStart(2, "0")}`;
+  };
+
+  // 🚫 kicked out
+  if (kickedOut) {
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <div className="text-center">
+          <div className="bg-gradient-to-r from-[#7565D9] to-[#4D0ACD] px-4 py-1 rounded-3xl w-[134px] mx-auto mb-8">
+            <span className="text-white text-sm font-medium">Intervue Poll</span>
+          </div>
+          <h2 className="text-[32px] font-sora font-semibold text-black mb-4">
+            You’ve been Kicked out !
+          </h2>
+          <p className="text-neutral-600 text-lg max-w-xl mx-auto">
+            Looks like the teacher removed you from this session.<br />
+            Please try again another time.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // 💤 no poll
+  if (!currentPoll) {
+    return (
+      <div className="min-h-screen bg-white flex flex-col items-center justify-center">
+        <div className="bg-gradient-to-r from-[#7565D9] to-[#4D0ACD] px-4 py-1 rounded-3xl w-[134px] mx-auto mb-12">
+          <span className="text-white text-sm font-medium">Intervue Poll</span>
+        </div>
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="text-center"
+        >
+          <div className="animate-spin w-10 h-10 border-4 border-primary-500 border-t-transparent rounded-full mx-auto mb-6" />
+          <h2 className="text-[33px] font-sora font-semibold text-black">
+            Wait for the teacher to ask questions..
+          </h2>
+        </motion.div>
+      </div>
+    );
+  }
+
+  // 📝 active poll
+  return (
+    <div className="min-h-screen bg-white flex flex-col items-center justify-center px-4">
+      <div className="flex items-center gap-4 mb-4 w-full max-w-3xl">
+        <h2 className="text-[22px] font-sora font-semibold text-black">
+          Question
+        </h2>
+        <Clock className="w-5 h-5 text-black" />
+        <span className="text-red-500 font-semibold">
+          {formatTime(timeRemaining)}
+        </span>
+      </div>
+      <div className="w-[727px] min-h-[353px] border border-[#AF8FF1] rounded-[9px] p-6 bg-white space-y-4">
+        <h3 className="text-lg font-semibold text-neutral-900 mb-3">
+          {currentPoll?.question}
+        </h3>
+        <div className="space-y-3">
+          {currentPoll?.options?.map((option, index) => (
+            <div
+              key={option.id || index}
+              onClick={() => setSelectedAnswer(option.id)}
+              className={`flex items-center gap-3 px-4 py-3 rounded-lg border cursor-pointer transition-all duration-200 ${
+                selectedAnswer === option.id
+                  ? "border-[#8F64E1] bg-primary-50"
+                  : "bg-gray-50 border-gray-200 hover:border-primary-300"
+              }`}
+            >
+              <span className="w-6 h-6 flex items-center justify-center rounded-full border text-sm font-medium bg-white text-primary-600">
+                {index + 1}
+              </span>
+              <span className="font-medium">{option.text}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+      {!hasVoted ? (
+        <motion.button
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          onClick={handleSubmitAnswer}
+          disabled={!selectedAnswer}
+          className="mt-8 w-[234px] h-[58px] rounded-[34px] text-white font-medium text-lg bg-gradient-to-r from-[#8F64E1] to-[#1D68BD] disabled:opacity-50"
+        >
+          Submit
+        </motion.button>
+      ) : (
+        <h3 className="mt-8 text-[24px] font-sora font-semibold text-black">
+          Wait for the teacher to ask a new question..
+        </h3>
+      )}
+    </div>
+  );
+};
+
+export default StudentDashboard;
