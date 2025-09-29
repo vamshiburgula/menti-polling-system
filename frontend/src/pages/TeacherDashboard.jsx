@@ -1,3 +1,4 @@
+// src/pages/TeacherDashboard.jsx
 import React, { useState } from "react";
 import { useSelector } from "react-redux";
 import { motion } from "framer-motion";
@@ -5,7 +6,7 @@ import { Trash2, History, Clock } from "lucide-react";
 import PollResults from "../components/PollResults";
 import PastPollsModal from "../components/PastPollsModal";
 import useSocket from "../hooks/useSocket";
-import CreatePollSection from "../components/CreatePollSection.jsx"; 
+import CreatePollSection from "../components/CreatePollSection.jsx";
 
 const TeacherDashboard = () => {
   const {
@@ -21,7 +22,8 @@ const TeacherDashboard = () => {
   const { socket } = useSocket() || {};
 
   const handleEndPoll = () => {
-    if (socket && currentPoll) socket.emit("end_poll", { pollId: currentPoll._id });
+    if (socket && currentPoll)
+      socket.emit("end_poll", { pollId: currentPoll._id });
   };
 
   const handleRemoveStudent = (studentName) => {
@@ -43,7 +45,7 @@ const TeacherDashboard = () => {
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             onClick={() => setShowPastPolls(true)}
-            className="flex items-center gap-2 px-6 py-3 border border-primary-500 text-primary-500 rounded-full"
+            className="flex items-center gap-2 px-6 py-3 bg-[#8F64E1] text-white rounded-full shadow-md"
           >
             <History size={18} />
             View Past Polls
@@ -54,26 +56,30 @@ const TeacherDashboard = () => {
         {currentPoll ? (
           <div className="grid lg:grid-cols-3 gap-6">
             {/* Active Poll Section */}
-            <div className="lg:col-span-2 space-y-6 bg-white rounded-2xl p-8">
+            <div className="lg:col-span-2 space-y-6 bg-white rounded-2xl p-8 shadow">
               <div className="flex items-center justify-between mb-6">
-                <h2 className="text-2xl font-bold text-neutral-800">Active Poll</h2>
-                <div className="flex items-center gap-2 text-primary-500">
+                <h2 className="text-2xl font-bold text-neutral-800">
+                  Active Poll
+                </h2>
+                <div className="flex items-center gap-2 text-primary-600">
                   <Clock size={20} />
-                  <span className="font-semibold text-lg">{formatTime(timeRemaining)}</span>
+                  <span className="font-semibold text-lg">
+                    {formatTime(timeRemaining)}
+                  </span>
                 </div>
               </div>
 
               {/* Question + Options */}
-              <div className="w-[507px] min-h-[167px] border border-[#AF8FF1] rounded-[9px] p-6 bg-white space-y-4">
+              <div className="w-full border border-[#AF8FF1] rounded-[9px] p-6 bg-white space-y-4">
                 <h3 className="text-lg font-semibold text-neutral-900 mb-3">
                   {currentPoll?.question}
                 </h3>
                 {currentPoll?.options?.map((o, i) => (
                   <div
                     key={i}
-                    className="flex items-center gap-4 px-4 py-3 rounded-lg border"
+                    className="flex items-center gap-4 px-4 py-3 rounded-lg border bg-gray-50"
                   >
-                    <span className="w-7 h-7 flex items-center justify-center rounded-full bg-primary-600 text-white">
+                    <span className="w-7 h-7 flex items-center justify-center rounded-full bg-[#8F64E1] text-white">
                       {i + 1}
                     </span>
                     <span>{o.text}</span>
@@ -85,7 +91,7 @@ const TeacherDashboard = () => {
               <div className="flex justify-end mt-8">
                 <button
                   onClick={handleEndPoll}
-                  className="bg-red-500 text-white px-6 py-2 rounded-lg"
+                  className="bg-red-500 hover:bg-red-600 text-white px-6 py-2 rounded-lg"
                 >
                   End Poll
                 </button>
@@ -101,7 +107,7 @@ const TeacherDashboard = () => {
 
             {/* Students List */}
             <div className="space-y-6">
-              <div className="bg-white rounded-2xl p-6">
+              <div className="bg-white rounded-2xl p-6 shadow">
                 <h3 className="text-lg font-bold text-neutral-800 mb-4">
                   Students ({connectedUsers.length}/{allUsers.length})
                 </h3>
@@ -112,12 +118,15 @@ const TeacherDashboard = () => {
                       className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
                     >
                       <span>{s.name}</span>
-                      <button
-                        onClick={() => handleRemoveStudent(s.name)}
-                        className="text-red-500"
-                      >
-                        <Trash2 size={16} />
-                      </button>
+                      {/* 🚫 Don’t allow kicking teacher */}
+                      {s.role !== "teacher" && (
+                        <button
+                          onClick={() => handleRemoveStudent(s.name)}
+                          className="text-red-500 hover:text-red-700"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      )}
                     </div>
                   ))}
                 </div>

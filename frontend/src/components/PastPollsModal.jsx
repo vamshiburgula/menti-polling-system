@@ -1,23 +1,35 @@
 import React, { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X } from "lucide-react";
+import { useSelector } from "react-redux";
 
 const PastPollsModal = ({ isOpen, onClose }) => {
+  const { user, role } = useSelector((state) => state.auth); // role = "teacher" or "student"
   const [polls, setPolls] = useState([]);
   const [loading, setLoading] = useState(false);
 
-  // ✅ Fetch past polls from backend
+  // ✅ Fetch past polls
   useEffect(() => {
     if (isOpen) {
       const fetchPolls = async () => {
         setLoading(true);
         try {
-          const res = await fetch(`${import.meta.env.VITE_API_URL}/api/polls`, {
+          let url = `${import.meta.env.VITE_API_URL}/api/polls`;
+
+          // students only see their own
+          if (role === "student") {
+            url += `?student=${user}`;
+          }
+
+          const res = await fetch(url, {
             headers: {
               "Content-Type": "application/json",
-              "x-teacher-secret": import.meta.env.VITE_TEACHER_SECRET,
+              ...(role === "teacher" && {
+                "x-teacher-secret": import.meta.env.VITE_TEACHER_SECRET,
+              }),
             },
           });
+
           const data = await res.json();
           if (res.ok) {
             setPolls(data.polls || []);
@@ -32,37 +44,38 @@ const PastPollsModal = ({ isOpen, onClose }) => {
       };
       fetchPolls();
     }
-  }, [isOpen]);
+  }, [isOpen, role, user]);
 
   return (
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-6 z-50">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.9 }}
-            className="bg-white rounded-2xl p-8 w-full max-w-4xl max-h-[90vh] overflow-y-auto"
-          >
-            {/* Header */}
-            <div className="flex items-center justify-between mb-8">
-              <h2 className="text-2xl font-bold text-neutral-800">
-                View <span className="text-primary-600">Poll History</span>
-              </h2>
-              <button
-                onClick={onClose}
-                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-              >
-                <X size={20} />
-              </button>
-            </div>
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 bg-white z-50 flex flex-col"
+        >
+          {/* Header Bar */}
+          <div className="flex justify-between items-center px-8 py-4 border-b border-gray-200">
+            <h2 className="text-[24px] font-bold text-neutral-800">
+              {role === "teacher" ? "All Poll History" : "My Poll History"}
+            </h2>
+            <button
+              onClick={onClose}
+              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              <X size={22} />
+            </button>
+          </div>
 
-            {/* Loading */}
+          {/* Content */}
+          <div className="flex-1 overflow-y-auto px-8 py-6">
             {loading && (
-              <p className="text-center text-neutral-600">Loading past polls...</p>
+              <p className="text-center text-neutral-600">
+                Loading past polls...
+              </p>
             )}
 
-            {/* Polls */}
             {!loading && polls.length > 0 ? (
               <div className="space-y-10">
                 {polls.map((poll, idx) => {
@@ -70,6 +83,7 @@ const PastPollsModal = ({ isOpen, onClose }) => {
                     (sum, o) => sum + (o.votes || 0),
                     0
                   );
+
                   return (
                     <motion.div
                       key={poll._id}
@@ -77,12 +91,12 @@ const PastPollsModal = ({ isOpen, onClose }) => {
                       animate={{ opacity: 1, y: 0 }}
                       className="space-y-4"
                     >
-                      {/* Question Label */}
+                      {/* Question label */}
                       <h3 className="text-lg font-semibold text-neutral-900">
                         Question {idx + 1}
                       </h3>
 
-                      {/* Question Card */}
+                      {/* Poll Card */}
                       <div className="rounded-md overflow-hidden border border-[#AF8FF1]">
                         <div className="bg-gradient-to-r from-gray-700 to-gray-600 text-white px-4 py-3 font-medium">
                           {poll.question}
@@ -128,8 +142,8 @@ const PastPollsModal = ({ isOpen, onClose }) => {
                 </div>
               )
             )}
-          </motion.div>
-        </div>
+          </div>
+        </motion.div>
       )}
     </AnimatePresence>
   );
