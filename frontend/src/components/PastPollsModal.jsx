@@ -148,5 +148,5 @@ const PastPollsModal = ({ isOpen, onClose }) => {
     </AnimatePresence>
   );
 };
-
+//updated
 export default PastPollsModal;

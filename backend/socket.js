@@ -5,21 +5,20 @@ const Poll = require("./models/Poll");
 let io;
 const pollTimers = new Map();
 const kickedStudents = new Set();
-const activeUsers = new Map(); // track normalized usernames -> socket.id
+const activeUsers = new Map(); // normalized username -> socket.id
 
+// ✅ Normalize usernames (lowercase, only letters+numbers)
 function normalizeName(name) {
   return name?.toLowerCase().replace(/[^a-z0-9]/g, "") || null;
 }
 
+// ✅ Prepare poll data for clients
 function sanitizePollForClient(poll) {
   const opts = (poll.options || []).map((o) => ({
     id: o._id ? o._id.toString() : o.id || null,
     text: o.text,
     votes: o.votes || 0,
   }));
-
-  const resultsObj = {};
-  opts.forEach((o) => (resultsObj[o.text] = o.votes || 0));
 
   let timeRemaining = 0;
   if (poll.isActive && poll.startedAt && poll.duration) {
@@ -37,12 +36,13 @@ function sanitizePollForClient(poll) {
     isActive: !!poll.isActive,
     createdAt: poll.createdAt,
     duration: poll.duration || 60,
-    results: resultsObj,
+    results: opts.reduce((acc, o) => ((acc[o.text] = o.votes), acc), {}),
     startedAt: poll.startedAt || null,
     timeRemaining,
   };
 }
 
+// ✅ Build user list for UI
 async function buildUsersForRoom(room) {
   const clients = Array.from(io.sockets.adapter.rooms.get(room) || []).map(
     (id) => {
@@ -73,43 +73,50 @@ function broadcastUsers(room) {
     .catch((err) => console.error("broadcastUsers error:", err));
 }
 
+// ✅ Poll timer handling
 function startPollTimer(poll) {
-  if (pollTimers.has(poll._id.toString())) {
-    clearInterval(pollTimers.get(poll._id.toString()));
-    pollTimers.delete(poll._id.toString());
+  const pid = poll._id.toString();
+  if (pollTimers.has(pid)) {
+    clearInterval(pollTimers.get(pid));
+    pollTimers.delete(pid);
   }
 
-  const pollId = poll._id.toString();
-
   const tickAndBroadcast = async () => {
-    const fresh = await Poll.findById(pollId);
-    if (!fresh) {
-      clearInterval(pollTimers.get(pollId));
-      pollTimers.delete(pollId);
-      return;
-    }
-    const sanitized = sanitizePollForClient(fresh);
-    io.to("lobby").emit("time_tick", {
-      pollId: sanitized._id,
-      timeRemaining: sanitized.timeRemaining,
-    });
-    if (!fresh.isActive || sanitized.timeRemaining <= 0) {
-      clearInterval(pollTimers.get(pollId));
-      pollTimers.delete(pollId);
-      fresh.isActive = false;
-      await fresh.save();
-      io.to("lobby").emit("poll_ended", {
-        pollId: fresh._id.toString(),
-        results: fresh.results,
+    try {
+      const fresh = await Poll.findById(pid);
+      if (!fresh) {
+        if (pollTimers.has(pid)) {
+          clearInterval(pollTimers.get(pid));
+          pollTimers.delete(pid);
+        }
+        return;
+      }
+      const sanitized = sanitizePollForClient(fresh);
+      io.to("lobby").emit("time_tick", {
+        pollId: sanitized._id,
+        timeRemaining: sanitized.timeRemaining,
       });
+      if (!fresh.isActive || sanitized.timeRemaining <= 0) {
+        clearInterval(pollTimers.get(pid));
+        pollTimers.delete(pid);
+        fresh.isActive = false;
+        await fresh.save();
+        io.to("lobby").emit("poll_ended", {
+          pollId: fresh._id.toString(),
+          results: fresh.options.map((o) => ({ text: o.text, votes: o.votes })),
+        });
+      }
+    } catch (e) {
+      console.error("startPollTimer tick error:", e);
     }
   };
 
   tickAndBroadcast();
   const interval = setInterval(tickAndBroadcast, 1000);
-  pollTimers.set(pollId, interval);
+  pollTimers.set(pid, interval);
 }
 
+// ✅ Init socket.io
 function initSocket(server) {
   io = new Server(server, {
     cors: {
@@ -121,14 +128,17 @@ function initSocket(server) {
   io.on("connection", (socket) => {
     console.log("✅ socket connected", socket.id);
 
+    // === Join ===
     socket.on("join_poll", async ({ pollId, role, name } = {}) => {
       try {
-        const room = pollId || "lobby";
         const normalized = normalizeName(name);
+        const room = pollId || "lobby";
+        if (!normalized) {
+          io.to(socket.id).emit("join_error", { message: "Invalid name" });
+          return socket.disconnect(true);
+        }
 
-        if (!normalized) return;
-
-        // prevent duplicate login
+        // 🚫 Duplicate login
         if (activeUsers.has(normalized)) {
           io.to(socket.id).emit("duplicate_login", {
             message: "Username already in use",
@@ -136,7 +146,7 @@ function initSocket(server) {
           return socket.disconnect(true);
         }
 
-        // prevent rejoining after kick
+        // 🚫 Kicked user cannot rejoin
         if (kickedStudents.has(normalized)) {
           io.to(socket.id).emit("student_removed", { name: normalized });
           return socket.disconnect(true);
@@ -161,41 +171,46 @@ function initSocket(server) {
       }
     });
 
-    socket.on("teacher_start_poll", async ({ question, options, duration, correctOptionIndex }) => {
-      try {
-        if (!question || !options || options.length < 2) {
-          return socket.emit("poll_error", { message: "Invalid poll data" });
-        }
+    // === Teacher starts poll ===
+    socket.on(
+      "teacher_start_poll",
+      async ({ question, options, duration, correctOptionIndex }) => {
+        try {
+          if (!question || !options || options.length < 2) {
+            return socket.emit("poll_error", { message: "Invalid poll data" });
+          }
 
-        const existingActive = await Poll.findOne({ isActive: true }).sort({
-          createdAt: -1,
-        });
-        if (existingActive) {
-          return socket.emit("poll_error", {
-            message: "An active poll is already running.",
+          const existingActive = await Poll.findOne({ isActive: true }).sort({
+            createdAt: -1,
           });
+          if (existingActive) {
+            return socket.emit("poll_error", {
+              message: "An active poll is already running.",
+            });
+          }
+
+          const poll = new Poll({
+            question,
+            options: options.map((text) => ({ text, votes: 0 })),
+            correctOptionIndex,
+            duration: duration || 60,
+            isActive: true,
+            startedAt: new Date(),
+            submissions: [],
+          });
+
+          await poll.save();
+          io.to("lobby").emit("poll_started", sanitizePollForClient(poll));
+          broadcastUsers("lobby");
+          startPollTimer(poll);
+        } catch (e) {
+          console.error("teacher_start_poll error:", e);
+          socket.emit("poll_error", { message: "Server error starting poll" });
         }
-
-        const poll = new Poll({
-          question,
-          options: options.map((text) => ({ text, votes: 0 })),
-          correctOptionIndex,
-          duration: duration || 60,
-          isActive: true,
-          startedAt: new Date(),
-          submissions: [],
-        });
-
-        await poll.save();
-        io.to("lobby").emit("poll_started", sanitizePollForClient(poll));
-        broadcastUsers("lobby");
-        startPollTimer(poll);
-      } catch (e) {
-        console.error("teacher_start_poll error:", e);
-        socket.emit("poll_error", { message: "Server error starting poll" });
       }
-    });
+    );
 
+    // === End poll ===
     socket.on("end_poll", async ({ pollId }) => {
       try {
         if (!pollId) return;
@@ -211,7 +226,7 @@ function initSocket(server) {
 
         io.to("lobby").emit("poll_ended", {
           pollId,
-          results: poll.results,
+          results: poll.options.map((o) => ({ text: o.text, votes: o.votes })),
         });
         broadcastUsers("lobby");
       } catch (e) {
@@ -219,42 +234,81 @@ function initSocket(server) {
       }
     });
 
+    // === Student submits answer ===
     socket.on("submit_answer", async ({ pollId, optionId, studentName }) => {
       try {
+        if (!pollId)
+          return socket.emit("submit_error", { message: "Missing pollId" });
+
         const poll = await Poll.findById(pollId);
-        if (!poll || !poll.isActive) return;
+        if (!poll || !poll.isActive)
+          return socket.emit("submit_error", { message: "No active poll" });
 
         const normalized = normalizeName(studentName);
-        const key = normalized || socket.id;
+        const submissionKey = normalized || socket.id;
 
-        if (poll.submissions.find((s) => s.key === key)) {
+        if (poll.submissions.find((s) => s.key === submissionKey)) {
           return socket.emit("submit_error", { message: "Already answered" });
         }
 
         const optIndex = poll.options.findIndex(
-          (o) =>
-            (o._id && o._id.toString() === optionId) || o.text === optionId
+          (o) => (o._id && o._id.toString() === optionId) || o.text === optionId
         );
-        if (optIndex === -1) return;
+        if (optIndex === -1)
+          return socket.emit("submit_error", { message: "Invalid option" });
 
         poll.options[optIndex].votes = (poll.options[optIndex].votes || 0) + 1;
+        const isCorrect =
+          typeof poll.correctOptionIndex === "number" &&
+          poll.correctOptionIndex === optIndex;
+
         poll.submissions.push({
-          key,
+          key: submissionKey,
           optionId,
           name: normalized,
+          correct: isCorrect,
           at: new Date(),
         });
 
         await poll.save();
+
+        // direct feedback for the student
+        io.to(socket.id).emit("answer_feedback", {
+          correct: isCorrect,
+          selectedIndex: optIndex,
+        });
+
+        // update results for everyone
         io.to("lobby").emit("poll_update", {
           pollId: poll._id.toString(),
-          results: poll.results,
+          results: poll.options.map((o) => ({ text: o.text, votes: o.votes })),
         });
+
+        broadcastUsers("lobby");
+
+        // close poll if all answered
+        const totalConnected =
+          (io.sockets.adapter.rooms.get("lobby") || new Set()).size;
+        const totalAnswered = poll.submissions.length;
+        if (totalConnected > 0 && totalAnswered >= totalConnected) {
+          poll.isActive = false;
+          await poll.save();
+          if (pollTimers.has(poll._id.toString())) {
+            clearInterval(pollTimers.get(poll._id.toString()));
+            pollTimers.delete(poll._id.toString());
+          }
+          io.to("lobby").emit("poll_ended", {
+            pollId: poll._id.toString(),
+            results: poll.options.map((o) => ({ text: o.text, votes: o.votes })),
+          });
+        }
       } catch (e) {
         console.error("submit_answer error:", e);
+        socket.emit("submit_error", { message: "Server error submitting answer" });
       }
     });
 
+    // === Kick student ===
     socket.on("remove_student", (studentName) => {
       try {
         const normalized = normalizeName(studentName);
@@ -277,6 +331,7 @@ function initSocket(server) {
       }
     });
 
+    // === Disconnect cleanup ===
     socket.on("disconnect", () => {
       if (socket.data?.name) {
         activeUsers.delete(socket.data.name);

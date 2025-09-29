@@ -2,19 +2,20 @@
 import React, { useState, useEffect } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import { motion } from "framer-motion";
-import { Clock } from "lucide-react";
+import { Clock, History } from "lucide-react";
 import useSocket from "../hooks/useSocket";
 import { decrementTime, setHasVoted, clearPoll } from "../store/slices/pollSlice";
+import PastPollsModal from "../components/PastPollsModal";
 
 const StudentDashboard = () => {
   const dispatch = useDispatch();
   const { user } = useSelector((state) => state.auth);
-  const { currentPoll, timeRemaining, hasVoted } = useSelector(
-    (state) => state.poll
-  );
+  const { currentPoll, timeRemaining, hasVoted } = useSelector((state) => state.poll);
 
   const [selectedAnswer, setSelectedAnswer] = useState("");
   const [kickedOut, setKickedOut] = useState(false);
+  const [duplicate, setDuplicate] = useState(false);
+  const [showPastPolls, setShowPastPolls] = useState(false);
   const { socket, connected } = useSocket() || {};
 
   // countdown
@@ -25,30 +26,32 @@ const StudentDashboard = () => {
     }
   }, [currentPoll, timeRemaining, dispatch]);
 
-  // kicked out listener (handles both string + object payloads)
+  // kicked out listener
   useEffect(() => {
     if (!socket) return;
 
-    const onRemoved = (data) => {
+    socket.on("student_removed", (data) => {
       const removedName = typeof data === "string" ? data : data?.name;
-      console.log("🚨 student_removed received:", removedName);
-
       if (removedName === user) {
         setKickedOut(true);
-        dispatch(clearPoll()); // reset poll state so we don’t see “waiting”
+        dispatch(clearPoll());
       }
-    };
+    });
 
-    socket.on("student_removed", onRemoved);
-    return () => socket.off("student_removed", onRemoved);
+    socket.on("duplicate_login", () => {
+      setDuplicate(true);
+      dispatch(clearPoll());
+    });
+
+    return () => {
+      socket.off("student_removed");
+      socket.off("duplicate_login");
+    };
   }, [socket, user, dispatch]);
 
   const handleSubmitAnswer = () => {
     if (!selectedAnswer) return;
-    if (!socket || !connected || !currentPoll) {
-      alert("Connection or poll missing. Refresh!");
-      return;
-    }
+    if (!socket || !connected || !currentPoll) return;
     socket.emit("submit_answer", {
       pollId: currentPoll._id,
       optionId: selectedAnswer,
@@ -64,32 +67,28 @@ const StudentDashboard = () => {
     return `${m}:${s.toString().padStart(2, "0")}`;
   };
 
+  // 🚫 Duplicate login screen
+  if (duplicate) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-white text-center">
+        <h2 className="text-2xl font-bold text-red-600">This username is already logged in!</h2>
+        <p className="mt-2 text-gray-600">Try using a different username.</p>
+      </div>
+    );
+  }
+
   // 🚫 kicked out
   if (kickedOut) {
     return (
       <div className="min-h-screen bg-white flex flex-col items-center justify-center px-4">
-        {/* Intervue badge */}
-        <div
-          className="bg-[#7451B6] text-white text-sm font-medium rounded-full flex items-center justify-center mb-6"
-          style={{ width: "134px", height: "31px" }}
-        >
+        <div className="bg-[#7451B6] text-white text-sm font-medium rounded-full flex items-center justify-center mb-6 w-[134px] h-[31px]">
           ✦ Intervue Poll
         </div>
-
-        {/* Title */}
-        <h2
-          className="font-sora font-semibold text-black mb-3 text-center"
-          style={{ fontSize: "28px", lineHeight: "36px" }}
-        >
+        <h2 className="font-sora font-semibold text-black mb-3 text-center text-[28px]">
           You’ve been Kicked out !
         </h2>
-
-        {/* Subtext */}
-        <p
-          className="text-neutral-500 text-center"
-          style={{ fontSize: "16px", lineHeight: "24px" }}
-        >
-          Looks like the teacher had removed you from the poll system. <br />
+        <p className="text-neutral-500 text-center text-[16px]">
+          Looks like the teacher removed you from the poll system. <br />
           Please try again sometime.
         </p>
       </div>
@@ -100,23 +99,26 @@ const StudentDashboard = () => {
   if (!currentPoll) {
     return (
       <div className="min-h-screen bg-white flex flex-col items-center justify-center px-4">
-        {/* Intervue badge */}
-        <div
-          className="bg-[#7451B6] text-white text-sm font-medium rounded-full flex items-center justify-center mb-6"
-          style={{ width: "134px", height: "31px" }}
-        >
-          ✦ Intervue Poll
+        <div className="flex justify-between items-center w-full max-w-3xl mb-6">
+          <div className="bg-[#7451B6] text-white text-sm font-medium rounded-full flex items-center justify-center w-[134px] h-[31px]">
+            ✦ Intervue Poll
+          </div>
+          <button
+            onClick={() => setShowPastPolls(true)}
+            className="flex items-center gap-2 px-6 py-3 bg-[#8F64E1] text-white rounded-full"
+          >
+            <History size={18} /> View Past Polls
+          </button>
         </div>
-
-        {/* Waiting text */}
         <motion.h2
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="font-sora font-semibold text-black text-center"
-          style={{ fontSize: "28px", lineHeight: "36px" }}
+          className="font-sora font-semibold text-black text-center text-[28px]"
         >
           Wait for the teacher to ask questions..
         </motion.h2>
+
+        <PastPollsModal isOpen={showPastPolls} onClose={() => setShowPastPolls(false)} />
       </div>
     );
   }
@@ -124,18 +126,11 @@ const StudentDashboard = () => {
   // 📝 active poll
   return (
     <div className="min-h-screen bg-white flex flex-col items-center justify-center px-4">
-      {/* Timer + Title */}
       <div className="flex items-center gap-4 mb-4 w-full max-w-3xl">
-        <h2 className="text-[22px] font-sora font-semibold text-black">
-          Question
-        </h2>
+        <h2 className="text-[22px] font-sora font-semibold text-black">Question</h2>
         <Clock className="w-5 h-5 text-black" />
-        <span className="text-red-500 font-semibold">
-          {formatTime(timeRemaining)}
-        </span>
+        <span className="text-red-500 font-semibold">{formatTime(timeRemaining)}</span>
       </div>
-
-      {/* Question + Options */}
       <div className="w-[727px] min-h-[353px] border border-[#AF8FF1] rounded-[9px] p-6 bg-white space-y-4">
         <h3 className="text-lg font-semibold text-neutral-900 mb-3">
           {currentPoll?.question}
@@ -159,8 +154,6 @@ const StudentDashboard = () => {
           ))}
         </div>
       </div>
-
-      {/* Submit Button */}
       {!hasVoted ? (
         <motion.button
           whileHover={{ scale: 1.05 }}
