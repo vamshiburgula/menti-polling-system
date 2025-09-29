@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Calendar, Users } from "lucide-react";
-import PollResults from "./PollResults";
+import { X } from "lucide-react";
 
 const PastPollsModal = ({ isOpen, onClose }) => {
   const [polls, setPolls] = useState([]);
@@ -13,10 +12,10 @@ const PastPollsModal = ({ isOpen, onClose }) => {
       const fetchPolls = async () => {
         setLoading(true);
         try {
-          const res = await fetch("http://localhost:5000/api/polls", {
+          const res = await fetch(`${import.meta.env.VITE_API_URL}/api/polls`, {
             headers: {
               "Content-Type": "application/json",
-              "x-teacher-secret": import.meta.env.VITE_TEACHER_SECRET || "secret123"
+              "x-teacher-secret": import.meta.env.VITE_TEACHER_SECRET,
             },
           });
           const data = await res.json();
@@ -35,20 +34,10 @@ const PastPollsModal = ({ isOpen, onClose }) => {
     }
   }, [isOpen]);
 
-  const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  };
-
   return (
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-6 z-50">
           <motion.div
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
@@ -56,9 +45,9 @@ const PastPollsModal = ({ isOpen, onClose }) => {
             className="bg-white rounded-2xl p-8 w-full max-w-4xl max-h-[90vh] overflow-y-auto"
           >
             {/* Header */}
-            <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center justify-between mb-8">
               <h2 className="text-2xl font-bold text-neutral-800">
-                Past Poll Results
+                View <span className="text-primary-600">Poll History</span>
               </h2>
               <button
                 onClick={onClose}
@@ -68,59 +57,76 @@ const PastPollsModal = ({ isOpen, onClose }) => {
               </button>
             </div>
 
-            {/* Content */}
-            {loading ? (
-              <p className="text-center text-neutral-600">Loading polls...</p>
-            ) : polls.length > 0 ? (
-              <div className="space-y-8">
-                {polls.map((poll) => (
-                  <motion.div
-                    key={poll._id}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="bg-gray-50 rounded-xl p-6"
-                  >
-                    <div className="flex items-start justify-between mb-4">
-                      <div>
-                        <h3 className="text-lg font-semibold text-neutral-800 mb-2">
+            {/* Loading */}
+            {loading && (
+              <p className="text-center text-neutral-600">Loading past polls...</p>
+            )}
+
+            {/* Polls */}
+            {!loading && polls.length > 0 ? (
+              <div className="space-y-10">
+                {polls.map((poll, idx) => {
+                  const totalVotes = poll.options.reduce(
+                    (sum, o) => sum + (o.votes || 0),
+                    0
+                  );
+                  return (
+                    <motion.div
+                      key={poll._id}
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="space-y-4"
+                    >
+                      {/* Question Label */}
+                      <h3 className="text-lg font-semibold text-neutral-900">
+                        Question {idx + 1}
+                      </h3>
+
+                      {/* Question Card */}
+                      <div className="rounded-md overflow-hidden border border-[#AF8FF1]">
+                        <div className="bg-gradient-to-r from-gray-700 to-gray-600 text-white px-4 py-3 font-medium">
                           {poll.question}
-                        </h3>
-                        <div className="flex items-center gap-4 text-sm text-neutral-600">
-                          <div className="flex items-center gap-1">
-                            <Calendar size={14} />
-                            <span>{formatDate(poll.createdAt)}</span>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <Users size={14} />
-                            <span>{poll.submissions?.length || 0} responses</span>
-                          </div>
+                        </div>
+                        <div className="p-4 space-y-3">
+                          {poll.options.map((o, i) => {
+                            const percentage =
+                              totalVotes > 0
+                                ? Math.round((o.votes / totalVotes) * 100)
+                                : 0;
+                            return (
+                              <div
+                                key={o._id || i}
+                                className="relative bg-gray-100 border border-[#AF8FF1] rounded-md flex items-center justify-between px-4 py-3"
+                              >
+                                {/* Progress bar */}
+                                <div
+                                  className="absolute left-0 top-0 h-full bg-[#7765DA] rounded-md"
+                                  style={{ width: `${percentage}%` }}
+                                />
+                                <div className="relative flex items-center gap-3 z-10">
+                                  <span className="w-7 h-7 flex items-center justify-center rounded-full bg-[#7765DA] text-white text-sm font-semibold">
+                                    {i + 1}
+                                  </span>
+                                  <span className="font-medium">{o.text}</span>
+                                </div>
+                                <span className="relative z-10 font-semibold text-neutral-800">
+                                  {percentage}%
+                                </span>
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
-                    </div>
-
-                    <PollResults
-                      results={
-                        poll.options.reduce((acc, o) => {
-                          acc[o.text] = o.votes;
-                          return acc;
-                        }, {})
-                      }
-                    />
-                  </motion.div>
-                ))}
+                    </motion.div>
+                  );
+                })}
               </div>
             ) : (
-              <div className="text-center py-12">
-                <div className="w-24 h-24 bg-gray-200 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <Calendar className="text-gray-400" size={32} />
+              !loading && (
+                <div className="text-center py-12 text-neutral-600">
+                  No past polls available.
                 </div>
-                <h3 className="text-xl font-semibold text-neutral-800 mb-2">
-                  No Past Polls
-                </h3>
-                <p className="text-neutral-600">
-                  Create your first poll to see results here.
-                </p>
-              </div>
+              )
             )}
           </motion.div>
         </div>

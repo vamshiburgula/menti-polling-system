@@ -25,15 +25,20 @@ const StudentDashboard = () => {
     }
   }, [currentPoll, timeRemaining, dispatch]);
 
-  // kicked out listener
+  // kicked out listener (handles both string + object payloads)
   useEffect(() => {
     if (!socket) return;
-    const onRemoved = ({ name }) => {
-      if (name === user) {
+
+    const onRemoved = (data) => {
+      const removedName = typeof data === "string" ? data : data?.name;
+      console.log("🚨 student_removed received:", removedName);
+
+      if (removedName === user) {
         setKickedOut(true);
-        dispatch(clearPoll());
+        dispatch(clearPoll()); // reset poll state so we don’t see “waiting”
       }
     };
+
     socket.on("student_removed", onRemoved);
     return () => socket.off("student_removed", onRemoved);
   }, [socket, user, dispatch]);
@@ -62,19 +67,31 @@ const StudentDashboard = () => {
   // 🚫 kicked out
   if (kickedOut) {
     return (
-      <div className="min-h-screen bg-white flex items-center justify-center">
-        <div className="text-center">
-          <div className="bg-gradient-to-r from-[#7565D9] to-[#4D0ACD] px-4 py-1 rounded-3xl w-[134px] mx-auto mb-8">
-            <span className="text-white text-sm font-medium">Intervue Poll</span>
-          </div>
-          <h2 className="text-[32px] font-sora font-semibold text-black mb-4">
-            You’ve been Kicked out !
-          </h2>
-          <p className="text-neutral-600 text-lg max-w-xl mx-auto">
-            Looks like the teacher removed you from this session.<br />
-            Please try again another time.
-          </p>
+      <div className="min-h-screen bg-white flex flex-col items-center justify-center px-4">
+        {/* Intervue badge */}
+        <div
+          className="bg-[#7451B6] text-white text-sm font-medium rounded-full flex items-center justify-center mb-6"
+          style={{ width: "134px", height: "31px" }}
+        >
+          ✦ Intervue Poll
         </div>
+
+        {/* Title */}
+        <h2
+          className="font-sora font-semibold text-black mb-3 text-center"
+          style={{ fontSize: "28px", lineHeight: "36px" }}
+        >
+          You’ve been Kicked out !
+        </h2>
+
+        {/* Subtext */}
+        <p
+          className="text-neutral-500 text-center"
+          style={{ fontSize: "16px", lineHeight: "24px" }}
+        >
+          Looks like the teacher had removed you from the poll system. <br />
+          Please try again sometime.
+        </p>
       </div>
     );
   }
@@ -82,20 +99,24 @@ const StudentDashboard = () => {
   // 💤 no poll
   if (!currentPoll) {
     return (
-      <div className="min-h-screen bg-white flex flex-col items-center justify-center">
-        <div className="bg-gradient-to-r from-[#7565D9] to-[#4D0ACD] px-4 py-1 rounded-3xl w-[134px] mx-auto mb-12">
-          <span className="text-white text-sm font-medium">Intervue Poll</span>
+      <div className="min-h-screen bg-white flex flex-col items-center justify-center px-4">
+        {/* Intervue badge */}
+        <div
+          className="bg-[#7451B6] text-white text-sm font-medium rounded-full flex items-center justify-center mb-6"
+          style={{ width: "134px", height: "31px" }}
+        >
+          ✦ Intervue Poll
         </div>
-        <motion.div
+
+        {/* Waiting text */}
+        <motion.h2
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="text-center"
+          className="font-sora font-semibold text-black text-center"
+          style={{ fontSize: "28px", lineHeight: "36px" }}
         >
-          <div className="animate-spin w-10 h-10 border-4 border-primary-500 border-t-transparent rounded-full mx-auto mb-6" />
-          <h2 className="text-[33px] font-sora font-semibold text-black">
-            Wait for the teacher to ask questions..
-          </h2>
-        </motion.div>
+          Wait for the teacher to ask questions..
+        </motion.h2>
       </div>
     );
   }
@@ -103,6 +124,7 @@ const StudentDashboard = () => {
   // 📝 active poll
   return (
     <div className="min-h-screen bg-white flex flex-col items-center justify-center px-4">
+      {/* Timer + Title */}
       <div className="flex items-center gap-4 mb-4 w-full max-w-3xl">
         <h2 className="text-[22px] font-sora font-semibold text-black">
           Question
@@ -112,6 +134,8 @@ const StudentDashboard = () => {
           {formatTime(timeRemaining)}
         </span>
       </div>
+
+      {/* Question + Options */}
       <div className="w-[727px] min-h-[353px] border border-[#AF8FF1] rounded-[9px] p-6 bg-white space-y-4">
         <h3 className="text-lg font-semibold text-neutral-900 mb-3">
           {currentPoll?.question}
@@ -135,6 +159,8 @@ const StudentDashboard = () => {
           ))}
         </div>
       </div>
+
+      {/* Submit Button */}
       {!hasVoted ? (
         <motion.button
           whileHover={{ scale: 1.05 }}
@@ -146,7 +172,7 @@ const StudentDashboard = () => {
           Submit
         </motion.button>
       ) : (
-        <h3 className="mt-8 text-[24px] font-sora font-semibold text-black">
+        <h3 className="mt-8 text-[20px] font-sora font-medium text-black">
           Wait for the teacher to ask a new question..
         </h3>
       )}

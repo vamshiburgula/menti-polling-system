@@ -1,4 +1,3 @@
-// src/components/CreatePollSection.jsx
 import React, { useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { motion } from "framer-motion";
@@ -12,8 +11,7 @@ const CreatePollSection = ({ timeLimit = 60 }) => {
   const [correctOption, setCorrectOption] = useState(null);
 
   const { socket, connected } = useSocket() || {};
-
-  const timeOptions = [10, 30, 60, 90, 120, 180, 300];
+  const timeOptions = [30, 60, 90, 120];
 
   const addOption = () => {
     if (options.length < 6) setOptions([...options, ""]);
@@ -45,14 +43,12 @@ const CreatePollSection = ({ timeLimit = 60 }) => {
       return;
     }
 
-    const poll = {
+    socket.emit("teacher_start_poll", {
       question: trimmedQuestion,
       options: nonEmptyOptions,
       duration: selectedTimeLimit,
       correctOptionIndex: correctOption,
-    };
-
-    socket.emit("teacher_start_poll", poll);
+    });
 
     setQuestion("");
     setOptions(["", ""]);
@@ -62,30 +58,27 @@ const CreatePollSection = ({ timeLimit = 60 }) => {
 
   return (
     <div className="w-full max-w-6xl mx-auto py-12 px-8 font-sora">
-      {/* Intervue Poll button */}
+      {/* Intervue Poll Button */}
       <div className="mb-6">
-        <button
-          className="px-3 py-1 text-white text-sm font-medium"
-          style={{
-            background: "linear-gradient(90deg, #7565D9 0%, #4D0ACD 100%)",
-            borderRadius: "24px",
-          }}
+        <div
+          className="px-3 py-1 text-white text-sm font-medium rounded-full w-[134px] text-center"
+          style={{ background: "linear-gradient(90deg, #7565D9 0%, #4D0ACD 100%)" }}
         >
           ✦ Intervue Poll
-        </button>
+        </div>
       </div>
 
       {/* Header */}
       <h1 className="text-[36px] font-semibold text-black mb-2">
         Let’s <span className="font-bold">Get Started</span>
       </h1>
-      <p className="text-neutral-500 text-[18px] leading-[25px] mb-10">
-        you’ll have the ability to create and manage polls, ask questions, and
+      <p className="text-neutral-500 text-[18px] leading-[25px] mb-10 max-w-2xl">
+        You’ll have the ability to create and manage polls, ask questions, and
         monitor your students' responses in real-time.
       </p>
 
       {/* Question + Timer */}
-      <div className="flex justify-between items-start mb-4">
+      <div className="flex justify-between items-start mb-3">
         <label className="text-lg font-semibold text-black">
           Enter your question
         </label>
@@ -124,16 +117,17 @@ const CreatePollSection = ({ timeLimit = 60 }) => {
         maxLength={100}
       />
 
-      {/* Options */}
+      {/* Options Header */}
       <div className="flex justify-between items-center mb-4">
         <h3 className="text-lg font-semibold text-black">Edit Options</h3>
         <span className="text-lg font-semibold text-black">Is it Correct?</span>
       </div>
 
+      {/* Options List */}
       <div className="space-y-4">
         {options.map((option, index) => (
           <div key={index} className="flex items-center justify-between gap-6">
-            {/* Number + Option Input */}
+            {/* Number + Input */}
             <div className="flex items-center gap-3 flex-1">
               <span
                 className="w-7 h-7 flex items-center justify-center rounded-full text-white text-sm font-semibold"
@@ -153,7 +147,7 @@ const CreatePollSection = ({ timeLimit = 60 }) => {
               />
             </div>
 
-            {/* Yes/No Correct Option */}
+            {/* Yes/No */}
             <div className="flex items-center gap-4 min-w-[140px]">
               <label className="flex items-center gap-1">
                 <input
@@ -190,8 +184,11 @@ const CreatePollSection = ({ timeLimit = 60 }) => {
         </button>
       )}
 
-      {/* Ask Question */}
-      <div className="flex justify-end mt-10">
+      {/* Divider */}
+      <div className="border-t border-gray-300 my-8" />
+
+      {/* Ask Question Button */}
+      <div className="flex justify-end">
         <motion.button
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
