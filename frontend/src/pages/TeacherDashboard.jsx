@@ -5,7 +5,7 @@ import { Trash2, History, Clock } from "lucide-react";
 import PollResults from "../components/PollResults";
 import PastPollsModal from "../components/PastPollsModal";
 import useSocket from "../hooks/useSocket";
-import CreatePollSection from "../components/CreatePollSection"; // ✅ Figma-style poll creator
+import CreatePollSection from "../components/CreatePollSection.jsx"; 
 
 const TeacherDashboard = () => {
   const {
